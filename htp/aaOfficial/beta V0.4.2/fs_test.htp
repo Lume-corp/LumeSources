@@ -12,7 +12,7 @@
     @text {id:"out_log"; content:"Ready."; size:16; color:"#a1a1aa";}
 }
 @script {
-    local ok = plugin_from_net("https://github.com/mcreatorLoginDanila/Lume/raw/refs/heads/main/plugins/aaOfficialUnsafe/unsafe_fs.dll")
+    local ok = plugin_from_net("https://github.com/Lume-corp/LumeSources/raw/refs/heads/main/plugins/aaOfficialUnsafe/unsafe_fs.dll")
     on_click("btn_write", function()
         if fs_write then
             fs_write("hello.txt", "Lume Unsafe Plugin works!")
