@@ -1,0 +1,10 @@
+page bg="#1e1e2e":
+    block pad=20 bg="#181825":
+        # Python-style comment
+        text content="Hello, Python!" size=32 color="#cba6f7"
+        text content="This page is fully rendered by a Custom C++ Plugin." size=16 color="#a6adc8"
+        rect height=2 bg="#45475a"
+        text content="No brackets, no semicolons. Just spaces." size=16 color="#a6adc8"
+        button content="Click Me!" bg="#89b4fa" color="#11111b" action="It works!"
+    block pad=20 bg="#1e1e2e":
+        text content="Second block, outside the first one." color="#f38ba8"
