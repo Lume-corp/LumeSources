@@ -1,11 +1,20 @@
-@page { title:"Lume - Browsers"; background:"#09090b";}
+@page {title:"Lume - Browsers Store"; background:"#09090b";}
 @block {align:"center"; padding:40; margin:0; background:"#09090b";
-  @text {content:"ALTERNATIVE BROWSERS"; size:36; color:"#fafafa"; bold:"true";}
+  @text {content:"GET YOUR BROWSER"; size:36; color:"#fafafa"; bold:"true";}
   @br {size:5;}
-  @text {content:"Download the web browser you need directly from the Lume engine"; size:16; color:"#a1a1aa"; italic:"true";}
+  @text {content:"Download Lume updates or alternative web browsers directly"; size:16; color:"#a1a1aa"; italic:"true";}
 }
-@block { align:"center"; padding:20; margin:0; background:"#09090b";
-    @row { gap:25;
+@block {align:"center"; padding:20; margin:0; background:"#09090b";
+    @row {align:"center"; gap:25;
+        @column {background:"#1e1b4b"; padding:25; border-radius:10; width:280;
+            @text {content:"Lume Engine"; size:26; color:"#60a5fa"; bold:"true";}
+            @divider {color:"#312e81"; thickness:1; margin:15;}
+            @text {content:"The lightweight, custom engine you are using right now. Portable x86 build."; size:14; color:"#a1a1aa";}
+            @br {size:25;}
+            @button {id:"btn_lume"; content:"Download Lume v0.6"; width:200; height:40; background:"#3730a3"; color:"#ffffff"; border-radius:6; size:15;}
+            @br {size:10;}
+            @text {id:"stat_lume"; content:""; size:13; color:"#60a5fa";}
+        }
         @column {background:"#18181b"; padding:25; border-radius:10; width:280;
             @text {content:"Brave"; size:26; color:"#fb923c"; bold:"true";}
             @divider {color:"#27272a"; thickness:1; margin:15;}
@@ -15,6 +24,9 @@
             @br {size:10;}
             @text {id:"stat_brave"; content:""; size:13; color:"#10b981";}
         }
+    }
+    @br {size:25;}
+    @row {align:"center"; gap:25;
         @column {background:"#18181b"; padding:25; border-radius:10; width:280;
             @text {content:"Chrome"; size:26; color:"#3b82f6"; bold:"true";}
             @divider {color:"#27272a"; thickness:1; margin:15;}
@@ -34,17 +46,18 @@
             @text {id:"stat_firefox"; content:""; size:13; color:"#10b981";}
         }
     }
-    @br { size:50; }
+    @br {size:50;}
     @button {content:"Back to store"; width:180; height:35; background:"#27272a"; color:"#fafafa"; border-radius:6; url:"index.htp"; size:14;}
 }
 @script {
+    local url_lume = "https://github.com/mcreatorLoginDanila/Lume/releases/download/betaV0.6/LumeX86.exe"
     local url_brave = "https://laptop-updates.brave.com/download/BRV090?bitness=64"
     local url_chrome = "https://dl.google.com/tag/s/appguid%3D%7B8A69D345-D564-463C-AFF1-A69D9E530F96%7D%26iid%3D%7B11F4B6DE-B03A-5726-BD11-17C6E2A6C9AA%7D%26lang%3Dru%26browser%3D4%26usagestats%3D1%26appname%3DGoogle%2520Chrome%26needsadmin%3Dprefers%26ap%3D-arch_x64-statsdef_1%26installdataindex%3Dempty/update2/installers/ChromeSetup.exe"
     local url_firefox = "https://download-installer.cdn.mozilla.net/pub/firefox/releases/150.0/win32/ru/Firefox%20Installer.exe"
     local timers = {}
     local function start_download(id, url, filename, stat_id)
         download_async(url, filename)
-        set_text(stat_id, "Starting downlod...")
+        set_text(stat_id, "Starting download...")
         if timers[id] then kill_timer(timers[id]) end
         timers[id] = set_timer(500, function()
             local status, path, dl_bytes, total = download_status(url)
@@ -52,7 +65,7 @@
                 set_text(stat_id, "Done! Saved in temp/")
                 kill_timer(timers[id])
                 timers[id] = nil
-                alert("Downloading ended!\nFile: " .. filename)
+                alert("Download complete!\nFile: " .. filename)
             elseif status == -1 then
                 set_text(stat_id, "Download error!")
                 kill_timer(timers[id])
@@ -68,6 +81,7 @@
             end
         end)
     end
+    on_click("btn_lume", function() start_download("lume", url_lume, "Lume.exe", "stat_lume") end)
     on_click("btn_brave", function() start_download("brave", url_brave, "BraveSetup.exe", "stat_brave") end)
     on_click("btn_chrome", function() start_download("chrome", url_chrome, "ChromeSetup.exe", "stat_chrome") end)
     on_click("btn_firefox", function() start_download("firefox", url_firefox, "FirefoxSetup.exe", "stat_firefox") end)
