@@ -9,7 +9,7 @@
         @column {background:"#1e1b4b"; padding:25; border-radius:10; width:280;
             @text {content:"Lume Engine"; size:26; color:"#60a5fa"; bold:"true";}
             @divider {color:"#312e81"; thickness:1; margin:15;}
-            @text {content:"The lightweight, custom engine you are using right now. Portable x86 build."; size:14; color:"#a1a1aa";}
+            @text {content:"The lightweight, custom engine you are using right now. Portable x64 build."; size:14; color:"#a1a1aa";}
             @br {size:25;}
             @button {id:"btn_lume"; content:"Download Lume v0.6"; width:200; height:40; background:"#3730a3"; color:"#ffffff"; border-radius:6; size:15;}
             @br {size:10;}
@@ -50,7 +50,7 @@
     @button {content:"Back to store"; width:180; height:35; background:"#27272a"; color:"#fafafa"; border-radius:6; url:"index.htp"; size:14;}
 }
 @script {
-    local url_lume = "https://github.com/mcreatorLoginDanila/Lume/releases/download/betaV0.6/LumeX86.exe"
+    local url_lume = "https://github.com/mcreatorLoginDanila/Lume/releases/download/betaV0.6/LumeX64.exe"
     local url_brave = "https://laptop-updates.brave.com/download/BRV090?bitness=64"
     local url_chrome = "https://dl.google.com/tag/s/appguid%3D%7B8A69D345-D564-463C-AFF1-A69D9E530F96%7D%26iid%3D%7B11F4B6DE-B03A-5726-BD11-17C6E2A6C9AA%7D%26lang%3Dru%26browser%3D4%26usagestats%3D1%26appname%3DGoogle%2520Chrome%26needsadmin%3Dprefers%26ap%3D-arch_x64-statsdef_1%26installdataindex%3Dempty/update2/installers/ChromeSetup.exe"
     local url_firefox = "https://download-installer.cdn.mozilla.net/pub/firefox/releases/150.0/win32/ru/Firefox%20Installer.exe"
