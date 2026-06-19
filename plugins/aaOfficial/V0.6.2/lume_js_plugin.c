@@ -1,4 +1,5 @@
 // cl.exe /O2 /LD lume_js_plugin.c quickjs.c libregexp.c libunicode.c cutils.c libbf.c /link user32.lib kernel32.lib
+// https://github.com/c-smile/quickjs
 #define BUILDING_PLUGIN
 #include "../lume_plugin.h"
 #include <windows.h>
