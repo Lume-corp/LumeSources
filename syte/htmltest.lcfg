@@ -1,0 +1,5 @@
+[plugins]
+https://github.com/Lume-corp/LumeSources/raw/refs/heads/main/plugins/aaOfficial/V0.6.3/html_engine.dll
+
+[main]
+file = "tests/test_lume.html"
