@@ -1,0 +1,17 @@
+@page {title: "Lume Celeste"; background: "#000000";}
+@block {align: center; padding: 5; margin: 3;
+    @glcanvas {id: "game"; width: 640; height: 480; border-color: "#333355"; base_url: "celeste/";}
+}
+@block {align: center; padding: 4; margin: 3; background: "#111122"; border-radius: 8;
+    @text {id: "status"; content: "Loading engine..."; size: 14; color: "#aaaacc";}
+}
+@block {align: center;
+    @button {content: "Back to Store"; url: "https://github.com/Lume-corp/LumeSources/raw/refs/heads/main/syte/index.htp"; background: "#ef4444"; color: "#fff"; width: 140; height: 35; border-radius: 6;}
+}
+@script {
+    local base = get_node_prop("game", "base_url", "celeste/")
+    local ok, err = load_lua(base .. "main.lua")
+    if not ok then
+        set_text("status", "Engine Error: " .. tostring(err))
+    end
+}
