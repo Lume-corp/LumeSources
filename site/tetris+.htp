@@ -1,0 +1,1269 @@
+@page{
+    title:"TETRIS+";
+    background:"#080810";
+}
+@block{
+    align:"center";
+    padding:10;
+    margin:5;
+    background:"#0e0e18";
+    border-radius:12;
+
+    @text{
+        content:"TETRIS+";
+        size:28;
+        color:"#00f0ff";
+        bold:true;
+    }
+    @br{size:4;}
+    @text{
+        content:"Arrows/WASD: Move & Rotate | Space: Hard Drop | P: Pause | R: Restart | Esc: Menu | F11: Fullscreen";
+        size:13;
+        color:"#8b91a0";
+    }
+    @br{size:8;}
+    @glcanvas{
+        id:"tetris_gl";
+        width:620;
+        height:720;
+        border-color:"#29293c";
+        capture:false;
+    }
+}
+@block{
+    align:"center";
+    padding:6;
+    margin:5;
+    background:"#080810";
+    border-radius:6;
+    @link{content:"<- Back to Home"; url:"about:home"; color:"#00f0ff"; size:15;}
+}
+@script{
+math.randomseed(os.time())
+local floor, min, max = math.floor, math.min, math.max
+local CANVAS = "tetris_gl"
+local BASE_W, BASE_H = 620, 720
+local COLS, ROWS, CELL = 10, 20, 30
+local SCALE = 6
+local SCOLS, SROWS = COLS * SCALE, ROWS * SCALE
+local state = 0
+local mode = 0
+local cfg = {
+    minesweeper = true,
+    randomFigures = false,
+    style = 2,
+    shadows = true,
+    textGlow = true
+}
+local best = {0, 0, 0}
+local COLORS = {
+    {0.95, 0.90, 0.10},
+    {0.10, 0.90, 0.95},
+    {0.95, 0.15, 0.75},
+    {0.15, 0.95, 0.30},
+    {0.20, 0.40, 0.95},
+    {0.95, 0.20, 0.20},
+    {0.95, 0.55, 0.10}
+}
+local NUMBER_COLORS = {
+    {0.30, 0.60, 1.00},
+    {0.30, 0.80, 0.30},
+    {1.00, 0.30, 0.30},
+    {0.70, 0.20, 0.80},
+    {0.70, 0.10, 0.10},
+    {0.20, 0.80, 0.80},
+    {0.90, 0.90, 0.90},
+    {0.50, 0.50, 0.50}
+}
+local TETROMINOES = {
+    {
+        {{0,1},{1,1},{2,1},{3,1}},
+        {{2,0},{2,1},{2,2},{2,3}},
+        {{0,2},{1,2},{2,2},{3,2}},
+        {{1,0},{1,1},{1,2},{1,3}}
+    },
+    {
+        {{1,0},{2,0},{1,1},{2,1}},
+        {{1,0},{2,0},{1,1},{2,1}},
+        {{1,0},{2,0},{1,1},{2,1}},
+        {{1,0},{2,0},{1,1},{2,1}}
+    },
+    {
+        {{1,0},{0,1},{1,1},{2,1}},
+        {{1,0},{1,1},{2,1},{1,2}},
+        {{0,1},{1,1},{2,1},{1,2}},
+        {{1,0},{0,1},{1,1},{1,2}}
+    },
+    {
+        {{1,0},{2,0},{0,1},{1,1}},
+        {{1,0},{1,1},{2,1},{2,2}},
+        {{1,1},{2,1},{0,2},{1,2}},
+        {{0,0},{0,1},{1,1},{1,2}}
+    },
+    {
+        {{0,0},{1,0},{1,1},{2,1}},
+        {{2,0},{1,1},{2,1},{1,2}},
+        {{0,1},{1,1},{1,2},{2,2}},
+        {{1,0},{0,1},{1,1},{0,2}}
+    },
+    {
+        {{0,0},{0,1},{1,1},{2,1}},
+        {{1,0},{2,0},{1,1},{1,2}},
+        {{0,1},{1,1},{2,1},{2,2}},
+        {{1,0},{1,1},{0,2},{1,2}}
+    },
+    {
+        {{2,0},{0,1},{1,1},{2,1}},
+        {{1,0},{1,1},{1,2},{2,2}},
+        {{0,1},{1,1},{2,1},{0,2}},
+        {{0,0},{1,0},{1,1},{1,2}}
+    }
+}
+local TRI_PIECES = {
+    {{1,1,0}, {1,1,2}},
+    {{1,1,0}, {1,1,2}, {0,1,2}},
+    {{1,1,1}, {1,1,3}, {1,0,3}},
+    {{1,1,0}, {1,1,2}, {0,1,1}, {2,1,0}},
+    {{1,1,3}, {0,1,2}, {1,2,1}}
+}
+local board = {}
+local triBoard = {}
+local sand = {}
+local function sandIndex(x, y) return (y - 1) * SCOLS + x end
+local function newBoards()
+    board, triBoard, sand = {}, {}, {}
+    for y = 1, ROWS do
+        board[y] = {}
+        triBoard[y] = {}
+        for x = 1, COLS do
+            board[y][x] = 0
+            triBoard[y][x] = {0, 0, 0, 0}
+        end
+    end
+    for i = 1, SCOLS * SROWS do sand[i] = 0 end
+end
+newBoards()
+local current = nil
+local nextPiece = nil
+local score, level, lines = 0, 1, 0
+local gameOver, paused = false, false
+local dropTimer, sandTimer = 0, 0
+local lastTime = get_time()
+local function makePiece()
+    local color = math.random(1, 7)
+    local rotations = {}
+    if mode == 2 then
+        local shape = TRI_PIECES[math.random(1, #TRI_PIECES)]
+        rotations[1] = {}
+        for i, b in ipairs(shape) do rotations[1][i] = {b[1], b[2], b[3]} end
+        for r = 2, 4 do
+            rotations[r] = {}
+            for i, b in ipairs(rotations[r - 1]) do
+                rotations[r][i] = {2 - b[2], b[1], (b[3] + 1) % 4}
+            end
+        end
+    elseif cfg.randomFigures then
+        rotations[1] = {}
+        for y = 0, 3 do
+            for x = 1, 2 do
+                if math.random(1, 100) <= 45 then
+                    rotations[1][#rotations[1] + 1] = {x, y, 0}
+                end
+            end
+        end
+        if #rotations[1] == 0 then rotations[1][1] = {1, 1, 0} end
+        for r = 2, 4 do
+            rotations[r] = {}
+            for i, b in ipairs(rotations[r - 1]) do
+                rotations[r][i] = {3 - b[2], b[1], 0}
+            end
+        end
+    else
+        for r = 1, 4 do
+            rotations[r] = {}
+            for i, b in ipairs(TETROMINOES[color][r]) do
+                rotations[r][i] = {b[1], b[2], 0}
+            end
+        end
+    end
+    return {color = color, rotations = rotations}
+end
+local function checkCollision(piece, rot, px, py)
+    if not piece then return true end
+    for _, b in ipairs(piece.rotations[rot]) do
+        local x, y, t = px + b[1], py + b[2], b[3]
+        if x < 1 or x > COLS or y > ROWS then return true end
+        if y >= 1 then
+            if mode == 0 then
+                if board[y][x] ~= 0 then return true end
+            elseif mode == 2 then
+                local cell = triBoard[y][x]
+                if cell[t + 1] ~= 0 then return true end
+                if t == 0 or t == 2 then
+                    if cell[2] ~= 0 or cell[4] ~= 0 then return true end
+                else
+                    if cell[1] ~= 0 or cell[3] ~= 0 then return true end
+                end
+            else
+                for sy = (y - 1) * SCALE + 1, y * SCALE do
+                    for sx = (x - 1) * SCALE + 1, x * SCALE do
+                        if sand[sandIndex(sx, sy)] ~= 0 then return true end
+                    end
+                end
+            end
+        end
+    end
+    return false
+end
+local function finishGame()
+    gameOver = true
+    if score > best[mode + 1] then best[mode + 1] = score end
+end
+local function spawnPiece()
+    current = nextPiece
+    nextPiece = makePiece()
+    current.rot = 1
+    current.x = floor(COLS / 2) - 1
+    current.y = 0
+    dropTimer = 0
+    if checkCollision(current, current.rot, current.x, current.y) then
+        finishGame()
+    end
+end
+local function updateLevel()
+    level = 1 + floor(lines / 10)
+end
+local function clearClassicLines()
+    local dst = ROWS
+    local cleared = 0
+    for y = ROWS, 1, -1 do
+        local full = true
+        for x = 1, COLS do
+            if board[y][x] == 0 then full = false; break end
+        end
+        if full then
+            cleared = cleared + 1
+        else
+            if dst ~= y then
+                for x = 1, COLS do board[dst][x] = board[y][x] end
+            end
+            dst = dst - 1
+        end
+    end
+    for y = dst, 1, -1 do
+        for x = 1, COLS do board[y][x] = 0 end
+    end
+    if cleared > 0 then
+        local points = {0, 100, 300, 500, 800, 1000, 1200, 1500, 2000}
+        score = score + points[min(cleared, 8) + 1] * level
+        lines = lines + cleared
+        updateLevel()
+    end
+end
+local function clearTritrisLines()
+    local dst = ROWS
+    local cleared = 0
+    for y = ROWS, 1, -1 do
+        local full = true
+        for x = 1, COLS do
+            local cell = triBoard[y][x]
+            local pair02 = cell[1] ~= 0 and cell[3] ~= 0
+            local pair13 = cell[2] ~= 0 and cell[4] ~= 0
+            if not pair02 and not pair13 then full = false; break end
+        end
+        if full then
+            cleared = cleared + 1
+        else
+            if dst ~= y then
+                for x = 1, COLS do
+                    for t = 1, 4 do triBoard[dst][x][t] = triBoard[y][x][t] end
+                end
+            end
+            dst = dst - 1
+        end
+    end
+    for y = dst, 1, -1 do
+        for x = 1, COLS do
+            for t = 1, 4 do triBoard[y][x][t] = 0 end
+        end
+    end
+    if cleared > 0 then
+        local points = {0, 100, 300, 500, 800, 1000, 1200, 1500, 2000}
+        score = score + points[min(cleared, 8) + 1] * level
+        lines = lines + cleared
+        updateLevel()
+    end
+end
+local function lockPiece()
+    if not current or gameOver then return end
+    for _, b in ipairs(current.rotations[current.rot]) do
+        local x, y, t = current.x + b[1], current.y + b[2], b[3]
+        if x >= 1 and x <= COLS and y >= 1 and y <= ROWS then
+            if mode == 0 then
+                board[y][x] = current.color
+            elseif mode == 2 then
+                triBoard[y][x][t + 1] = current.color
+            else
+                for sy = (y - 1) * SCALE + 1, y * SCALE do
+                    for sx = (x - 1) * SCALE + 1, x * SCALE do
+                        sand[sandIndex(sx, sy)] = current.color
+                    end
+                end
+            end
+        end
+    end
+    if mode == 0 then clearClassicLines()
+    elseif mode == 2 then clearTritrisLines() end
+    spawnPiece()
+end
+local function ghostY()
+    local y = current.y
+    while not checkCollision(current, current.rot, current.x, y + 1) do
+        y = y + 1
+    end
+    return y
+end
+local function hardDrop()
+    if gameOver or paused or not current then return end
+    while not checkCollision(current, current.rot, current.x, current.y + 1) do
+        current.y = current.y + 1
+        score = score + 2
+    end
+    lockPiece()
+end
+local function rotatePiece()
+    if gameOver or paused or not current then return end
+    local newRot = current.rot % 4 + 1
+    local kicks = {0, -1, 1, -2, 2}
+    for _, dx in ipairs(kicks) do
+        if not checkCollision(current, newRot, current.x + dx, current.y) then
+            current.rot = newRot
+            current.x = current.x + dx
+            return
+        end
+    end
+end
+local function restartGame()
+    newBoards()
+    score, level, lines = 0, 1, 0
+    gameOver, paused = false, false
+    dropTimer, sandTimer = 0, 0
+    current = nil
+    nextPiece = makePiece()
+    spawnPiece()
+    lastTime = get_time()
+end
+local function updateSandPhysics()
+    for y = SROWS - 1, 1, -1 do
+        local start = math.random(1, SCOLS)
+        local dir = math.random(0, 1) == 0 and -1 or 1
+        for n = 0, SCOLS - 1 do
+            local x = ((start - 1 + n * dir) % SCOLS) + 1
+            local at = sandIndex(x, y)
+            local color = sand[at]
+            if color ~= 0 then
+                local below = sandIndex(x, y + 1)
+                if sand[below] == 0 then
+                    sand[below], sand[at] = color, 0
+                else
+                    local left = x > 1 and sand[sandIndex(x - 1, y + 1)] == 0
+                    local right = x < SCOLS and sand[sandIndex(x + 1, y + 1)] == 0
+                    local target = nil
+                    if left and right then target = math.random(0, 1) == 0 and x - 1 or x + 1
+                    elseif left then target = x - 1
+                    elseif right then target = x + 1 end
+                    if target then
+                        sand[sandIndex(target, y + 1)] = color
+                        sand[at] = 0
+                    end
+                end
+            end
+        end
+    end
+end
+local function processSandMatch()
+    local visited, marked = {}, {}
+    local queue = {}
+    local removed = 0
+    for startY = 1, SROWS do
+        local start = sandIndex(1, startY)
+        local color = sand[start]
+        if color ~= 0 and not visited[start] then
+            local head, tail = 1, 1
+            local reachesRight = false
+            queue[1] = start
+            visited[start] = true
+            while head <= tail do
+                local id = queue[head]
+                head = head + 1
+                local x = ((id - 1) % SCOLS) + 1
+                local y = floor((id - 1) / SCOLS) + 1
+                if x == SCOLS then reachesRight = true end
+                local function tryAdd(nx, ny)
+                    if nx < 1 or nx > SCOLS or ny < 1 or ny > SROWS then return end
+                    local ni = sandIndex(nx, ny)
+                    if not visited[ni] and sand[ni] == color then
+                        visited[ni] = true
+                        tail = tail + 1
+                        queue[tail] = ni
+                    end
+                end
+                tryAdd(x - 1, y)
+                tryAdd(x + 1, y)
+                tryAdd(x, y - 1)
+                tryAdd(x, y + 1)
+            end
+            if reachesRight then
+                for i = 1, tail do marked[queue[i]] = true end
+            end
+        end
+    end
+    for id in pairs(marked) do
+        sand[id] = 0
+        removed = removed + 1
+    end
+    if removed > 0 then
+        score = score + removed * level
+        lines = lines + floor(removed / SCOLS)
+        updateLevel()
+    end
+end
+local uiProgram, blockProgram, shadowProgram, quad = nil, nil, nil, nil
+local ortho, activeProgram
+local screenW, screenH = BASE_W, BASE_H
+local boardX, boardY, sideX = 0, 0, 0
+local boardTexID = 0
+local boardPixels = {}
+for i = 1, COLS * ROWS * 4 do boardPixels[i] = 0 end
+local function useProgram(program)
+    if activeProgram ~= program then
+        gl_use_program(program)
+        activeProgram = program
+    end
+end
+local function initGL()
+    local vs = [[
+        #version 330 core
+        layout(location = 0) in vec3 aPos;
+        layout(location = 1) in vec2 aUV;
+        uniform mat4 uMVP;
+        out vec2 vUV;
+        void main() {
+            vUV = aUV;
+            gl_Position = uMVP * vec4(aPos, 1.0);
+        }
+    ]]
+    local uiFS = [[
+        #version 330 core
+        uniform vec4 uColor;
+        out vec4 FragColor;
+        void main() {
+            FragColor = uColor;
+        }
+    ]]
+    local shadowFS = [[
+        #version 330 core
+        in vec2 vUV;
+        out vec4 FragColor;
+        uniform vec2  u_lightPos;
+        uniform vec2  u_casterPos;
+        uniform vec2  u_quadSize;
+        uniform vec3  u_casterColor;
+        uniform int   u_isGlass;
+        uniform float u_casterHeight;
+        uniform float u_intensity;
+        uniform float u_time;
+        float sHash(vec2 p) {
+            vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+            p3 += dot(p3, p3.yzx + 33.33);
+            return fract((p3.x + p3.y) * p3.z);
+        }
+        float computeDirectionalShadow(vec2 currentPixel, vec2 blockCenter, vec2 lightDir, float elevation) {
+            vec2 delta = currentPixel - blockCenter;
+            float t = dot(delta, lightDir);
+            if (t < -0.8) return 0.0;
+            float onsetFactor = smoothstep(-0.8, 3.0, t);
+            vec2 perpDir = vec2(-lightDir.y, lightDir.x);
+            float distPerp = abs(dot(delta, perpDir));
+            float penumbra = 1.6 + t * (0.26 + elevation * 0.07);
+            float blockerHalf = 14.5;
+            float lateral = smoothstep(blockerHalf + penumbra, blockerHalf - penumbra * 0.25, distPerp);
+            float maxReach = 32.0 + elevation * 52.0;
+            float reach = smoothstep(maxReach, 0.0, t);
+            return onsetFactor * lateral * reach;
+        }
+        float computeDirectionalContact(vec2 currentPixel, vec2 blockCenter, vec2 lightDir) {
+            vec2 delta = currentPixel - blockCenter;
+            float t = dot(delta, lightDir);
+            if (t < 0.0) return 0.0;
+            float d = length(delta);
+            return smoothstep(19.0, 11.0, d) * smoothstep(0.0, 4.0, t) * 0.45;
+        }
+        vec3 computeGlassCaustic(vec2 pixelPos, vec3 glassCol, float rawShadow) {
+            vec2 cPos = pixelPos * 0.16;
+            float c1 = sin(cPos.x * 3.5 + cPos.y * 2.2 + u_time * 2.0);
+            float c2 = cos(cPos.x * 2.6 - cPos.y * 3.4 - u_time * 1.7);
+            float caustic = pow(clamp(c1 * c2 + 0.35, 0.0, 1.0), 3.0) * 1.6;
+            vec3 refracted;
+            refracted.r = caustic * (glassCol.r * 1.3 + 0.15);
+            refracted.g = caustic * (glassCol.g * 1.1 + 0.10);
+            refracted.b = caustic * (glassCol.b * 1.5 + 0.25);
+            vec3 shadowTone = mix(vec3(0.02, 0.03, 0.05), glassCol * 0.35, 0.7);
+            vec3 res = shadowTone * rawShadow - refracted * 0.35;
+            return max(res, vec3(0.0));
+        }
+        void main() {
+            vec2 uv = vUV;
+            vec2 currentPixel = u_casterPos + (uv - 0.5) * u_quadSize;
+            vec2 lightVector = u_casterPos - u_lightPos;
+            vec2 lightDir = normalize(lightVector);
+            float dirShadow = computeDirectionalShadow(currentPixel, u_casterPos, lightDir, u_casterHeight);
+            float contactAO = computeDirectionalContact(currentPixel, u_casterPos, lightDir);
+            float jitter = (sHash(currentPixel + vec2(u_time)) - 0.5) * 0.06;
+            dirShadow = clamp(dirShadow + jitter, 0.0, 1.0);
+            float totalShadow = max(dirShadow * 0.85, contactAO) * u_intensity;
+            if (totalShadow < 0.01) discard;
+            if (u_isGlass == 1) {
+                vec3 glassCol = computeGlassCaustic(currentPixel, u_casterColor, totalShadow);
+                float alpha = clamp(totalShadow * 0.55, 0.0, 0.65);
+                FragColor = vec4(glassCol, alpha);
+            }
+            else {
+                vec3 opaqueCol = vec3(0.012, 0.016, 0.025);
+                float alpha = clamp(totalShadow * 0.85, 0.0, 0.85);
+                FragColor = vec4(opaqueCol, alpha);
+            }
+        }
+    ]]
+    local blockFS = [[
+        #version 330 core
+        in vec2 vUV;
+        out vec4 FragColor;
+        uniform sampler2D u_boardTex;
+        uniform vec4 uColor;
+        uniform vec4 uParams;
+        uniform vec4 uOptions;
+        uniform vec4 uNeighbors;
+        uniform vec4 uBoardArea;
+        uniform vec4 uLightArea;
+        float bHash12(vec2 p) {
+            vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+            p3 += dot(p3, p3.yzx + 33.33);
+            return fract((p3.x + p3.y) * p3.z);
+        }
+        vec2 bHash22(vec2 p) {
+            vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+            p3 += dot(p3, p3.yzx + 33.33);
+            return fract((p3.xx + p3.yz) * p3.zy);
+        }
+        float bNoise(vec2 p) {
+            vec2 i = floor(p), f = fract(p);
+            vec2 u = f * f * (3.0 - 2.0 * f);
+            return mix(mix(bHash12(i + vec2(0.0,0.0)), bHash12(i + vec2(1.0,0.0)), u.x),
+                       mix(bHash12(i + vec2(0.0,1.0)), bHash12(i + vec2(1.0,1.0)), u.x), u.y);
+        }
+        float bFBM(vec2 p) {
+            float v = 0.0, a = 0.5;
+            mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
+            for(int i = 0; i < 4; i++) {
+                v += a * bNoise(p);
+                p = rot * p * 2.02 + vec2(1.7, 9.2);
+                a *= 0.5;
+            }
+            return v;
+        }
+        vec3 bVoronoi(vec2 p) {
+            vec2 n = floor(p), f = fract(p);
+            float md = 8.0, md2 = 8.0;
+            vec2 mr = vec2(0.0);
+            for(int j = -1; j <= 1; j++) {
+                for(int i = -1; i <= 1; i++) {
+                    vec2 g = vec2(float(i), float(j));
+                    vec2 o = bHash22(n + g);
+                    vec2 r = g + o - f;
+                    float d = dot(r, r);
+                    if(d < md) { md2 = md; md = d; mr = r; } else if(d < md2) { md2 = d; }
+                }
+            }
+            return vec3(sqrt(md), sqrt(md2), abs(mr.x) + abs(mr.y));
+        }
+        float sdHexagon(vec2 p, float r) {
+            const vec3 k = vec3(-0.866025404, 0.5, 0.577350269);
+            p = abs(p);
+            p -= 2.0 * min(dot(k.xy, p), 0.0) * k.xy;
+            p -= vec2(clamp(p.x, -k.z * r, k.z * r), r);
+            return length(p) * sign(p.y);
+        }
+        float fresnelSchlick(float cosTheta, float F0) {
+            return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+        }
+        vec3 traceVolumetricLight(vec2 pixelPos, vec3 N) {
+            vec2 rayUV = (pixelPos - uBoardArea.xy) / uBoardArea.zw;
+            vec2 lightUV = (uLightArea.xy - uBoardArea.xy) / uBoardArea.zw;
+            vec2 baseRayDir = normalize(lightUV - rayUV);
+            vec2 refractedDir = baseRayDir + N.xy * 0.12;
+            vec3 transmittedBeam = vec3(1.15, 1.10, 1.00);
+            float stepSize = 0.035;
+            for(int s = 1; s <= 24; s++) {
+                float dist = float(s) * stepSize;
+                vec2 sampleUVR = rayUV + (refractedDir + vec2(-0.015, 0.010)) * dist;
+                vec2 sampleUVG = rayUV + (refractedDir) * dist;
+                vec2 sampleUVB = rayUV + (refractedDir + vec2(0.015, -0.010)) * dist;
+                if (sampleUVG.x > 1.02 || sampleUVG.y < -0.02) break;
+                vec4 sampR = texture(u_boardTex, sampleUVR);
+                vec4 sampG = texture(u_boardTex, sampleUVG);
+                vec4 sampB = texture(u_boardTex, sampleUVB);
+                transmittedBeam.r *= mix(1.0, sampR.r * 1.35 + 0.15, sampR.a * 0.16);
+                transmittedBeam.g *= mix(1.0, sampG.g * 1.35 + 0.15, sampG.a * 0.16);
+                transmittedBeam.b *= mix(1.0, sampB.b * 1.35 + 0.15, sampB.a * 0.16);
+                transmittedBeam *= 0.97;
+            }
+            return transmittedBeam;
+        }
+        void main() {
+            vec2 uv = vUV;
+            int style = int(uOptions.x + 0.5);
+            int tri = int(uOptions.y + 0.5);
+            int triType = int(uOptions.z + 0.5);
+            float sizePx = uOptions.w;
+            if (tri == 1) {
+                if (triType == 0 && (uv.x + uv.y > 1.0)) discard;
+                if (triType == 1 && (uv.x < uv.y)) discard;
+                if (triType == 2 && (uv.x + uv.y < 1.0)) discard;
+                if (triType == 3 && (uv.x > uv.y)) discard;
+            }
+            vec2 pixelPos = uParams.zw + uv * sizePx;
+            vec3 L = normalize(vec3(uLightArea.xy - pixelPos, 140.0));
+            vec3 V = vec3(0.0, 0.0, 1.0);
+            vec3 col = uColor.rgb;
+            float ao = 1.0;
+            if (uNeighbors.z > 0.5) ao *= smoothstep(0.0, 0.42, uv.y);
+            if (uNeighbors.x > 0.5) ao *= smoothstep(0.0, 0.42, uv.x);
+            if (uNeighbors.y > 0.5) ao *= smoothstep(0.0, 0.42, 1.0 - uv.x);
+            if (uNeighbors.w > 0.5) ao *= smoothstep(0.0, 0.42, 1.0 - uv.y);
+            ao = clamp(ao * 0.4 + 0.6, 0.0, 1.0);
+            float buried = uParams.y;
+            float tm = uParams.x;
+            if (style == 0) {
+                vec2 px = uv * 30.0;
+                vec3 topBright = uColor.rgb * 1.45;
+                vec3 botDark   = uColor.rgb * 0.45;
+                vec3 coreColor = uColor.rgb * 1.12;
+                col = uColor.rgb;
+                if (px.x < 1.0 || px.y < 1.0) col = topBright;
+                if (px.x >= 29.0 || px.y >= 29.0) col = botDark;
+                if (px.x >= 3.0 && px.y >= 3.0 && px.x < 27.0 && px.y < 27.0) col = coreColor;
+                float depthShadow = pow(0.92, buried);
+                col *= depthShadow * ao;
+            }
+            else if (style == 1) {
+                float d = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+                float borderPulse = exp(-d * 16.0) * (1.6 + 0.3 * sin(tm * 5.0));
+                float innerCore   = smoothstep(0.32, 0.48, d);
+                float scanline    = sin(pixelPos.y * 1.5 - tm * 8.0) * 0.09;
+                float gridLines   = step(0.94, fract(pixelPos.x * 0.2)) + step(0.94, fract(pixelPos.y * 0.2));
+                vec3 neon = uColor.rgb * (0.28 + 0.72 * innerCore) + borderPulse * uColor.rgb * 1.6;
+                neon += vec3(gridLines * 0.15) + vec3(scanline);
+                float depthShadow = pow(0.88, buried);
+                col = neon * depthShadow * ao;
+            }
+            else if (style == 2) {
+                float dL = (uNeighbors.x > 0.5) ? 1.0 : uv.x;
+                float dR = (uNeighbors.y > 0.5) ? 1.0 : (1.0 - uv.x);
+                float dT = (uNeighbors.z > 0.5) ? 1.0 : uv.y;
+                float dB = (uNeighbors.w > 0.5) ? 1.0 : (1.0 - uv.y);
+                float borderDist = min(min(dL, dR), min(dT, dB));
+                vec3 N = normalize(vec3((uv - 0.5) * 2.0, 0.7));
+                vec3 H = normalize(L + V);
+                vec3 transLight = traceVolumetricLight(pixelPos, N);
+                vec2 beamDir = normalize(vec2(-0.85, 1.0));
+                float beamDist = abs(dot(uv - vec2(0.5), vec2(-beamDir.y, beamDir.x)));
+                float coreBeam = exp(-beamDist * 7.0) * 1.6;
+                vec3 vor = bVoronoi(uv * 4.5 + pixelPos * 0.05 + tm * 0.35);
+                float causticWaves = pow(clamp(1.0 - (vor.y - vor.x), 0.0, 1.0), 3.0) * 1.4;
+                float NdotL = max(0.0, dot(N, L));
+                float NdotV = max(0.0, dot(N, V));
+                float fresnel = fresnelSchlick(NdotV, 0.20);
+                float spec = pow(max(0.0, dot(N, H)), 56.0) * 3.8;
+                vec3 filteredRay = transLight * (uColor.rgb * 1.35 + vec3(0.08));
+                vec3 crystalBody = mix(uColor.rgb * 0.25, filteredRay, 0.78);
+                crystalBody += filteredRay * (coreBeam * 0.75 + causticWaves * 0.35);
+                float exitGlow = smoothstep(0.4, 0.0, uv.x) * smoothstep(0.6, 1.0, uv.y) * 1.1;
+                crystalBody += filteredRay * exitGlow;
+                float edgeFacet = smoothstep(0.0, 0.12, borderDist);
+                vec3 glassReflect = vec3(spec) + filteredRay * (fresnel * 0.7) + (1.0 - edgeFacet) * 0.25;
+                col = crystalBody + glassReflect;
+            }
+            else if (style == 3) {
+                vec2 flow = pixelPos * 0.055;
+                flow.y -= tm * 0.3;
+                vec2 q = vec2(bFBM(flow), bFBM(flow + vec2(5.2, 1.3)));
+                vec2 r = vec2(bFBM(flow + 4.0 * q + vec2(1.7, 9.2) + tm * 0.12),
+                              bFBM(flow + 4.0 * q + vec2(8.3, 2.8) - tm * 0.15));
+                float heat = bFBM(flow + 4.0 * r);
+                vec3 basalt = uColor.rgb * 0.45;
+                vec3 redLava = mix(uColor.rgb, vec3(1.0, 0.15, 0.02), 0.75);
+                vec3 hotLava = vec3(1.0, 0.95, 0.4);
+                vec3 magma = mix(basalt, redLava, smoothstep(0.28, 0.62, heat));
+                magma = mix(magma, hotLava, smoothstep(0.66, 0.96, heat));
+                magma += vec3(pow(heat, 4.0) * 1.5);
+                float depthShadow = pow(0.92, buried);
+                col = magma * depthShadow * (ao * 0.35 + 0.65);
+            }
+            else if (style == 4) {
+                vec2 p = (uv - 0.5) * 2.0;
+                float wave1 = sin(pixelPos.x * 0.15 + pixelPos.y * 0.10 + tm * 2.5);
+                float wave2 = cos(pixelPos.x * 0.12 - pixelPos.y * 0.18 - tm * 2.0);
+                vec2 ripple = vec2(wave1, wave2) * 0.18;
+                vec3 N = normalize(vec3(p * 1.4 + ripple, 0.75));
+                vec3 H = normalize(L + V);
+                float spec = pow(max(0.0, dot(N, H)), 72.0) * 4.0;
+                float broad = pow(max(0.0, dot(N, H)), 12.0) * 0.8;
+                vec3 bronzeTone = mix(uColor.rgb * 0.5, vec3(0.45, 0.22, 0.05), 0.6);
+                vec3 pureGold   = mix(uColor.rgb, vec3(1.0, 0.82, 0.18), 0.75);
+                vec3 paleGold   = vec3(1.0, 0.96, 0.75);
+                float NdotL = max(0.0, dot(N, L));
+                vec3 liquid = mix(bronzeTone, pureGold, smoothstep(0.1, 0.75, NdotL));
+                liquid = mix(liquid, paleGold, broad);
+                liquid += vec3(spec);
+                float depthShadow = pow(0.89, buried);
+                col = liquid * depthShadow * ao;
+            }
+            else if (style == 5) {
+                vec2 hexUV = pixelPos * 0.15;
+                float hexDist = sdHexagon(fract(hexUV) - 0.5, 0.45);
+                float hexBorder = smoothstep(0.05, -0.05, abs(hexDist) - 0.08);
+                float pulseWave = sin(pixelPos.y * 0.25 - tm * 6.0) * 0.5 + 0.5;
+                float glitch = step(0.96, sin(tm * 16.0 + pixelPos.y * 2.0));
+                vec3 holoBase = uColor.rgb * (0.35 + 0.65 * pulseWave);
+                vec3 holoGrid = (uColor.rgb * 1.8 + vec3(0.25)) * hexBorder;
+                vec3 hologram = holoBase + holoGrid + vec3(glitch * 0.45);
+                float depthShadow = pow(0.90, buried);
+                col = hologram * depthShadow * ao;
+            }
+            FragColor = vec4(col, uColor.a);
+        }
+    ]]
+    uiProgram = gl_create_program(vs, uiFS)
+    shadowProgram = gl_create_program(vs, shadowFS)
+    blockProgram = gl_create_program(vs, blockFS)
+    local verts = {
+        0,0,0, 0,0,
+        1,0,0, 1,0,
+        1,1,0, 1,1,
+        0,0,0, 0,0,
+        1,1,0, 1,1,
+        0,1,0, 0,1
+    }
+    quad = gl_create_mesh(verts, nil, 5)
+end
+local function syncBoardTextureToGPU()
+    for i = 1, COLS * ROWS * 4 do boardPixels[i] = 0 end
+    for y = 1, ROWS do
+        for x = 1, COLS do
+            local colIdx = 0
+            if mode == 0 and board[y][x] ~= 0 then
+                colIdx = board[y][x]
+            elseif mode == 2 then
+                for k = 1, 4 do
+                    if triBoard[y][x][k] ~= 0 then colIdx = triBoard[y][x][k]; break end
+                end
+            end
+            if colIdx > 0 then
+                local c = COLORS[colIdx]
+                local idx = ((y - 1) * COLS + (x - 1)) * 4 + 1
+                boardPixels[idx]     = floor(c[1] * 255)
+                boardPixels[idx + 1] = floor(c[2] * 255)
+                boardPixels[idx + 2] = floor(c[3] * 255)
+                boardPixels[idx + 3] = 255
+            end
+        end
+    end
+    if current and not gameOver then
+        local shape = current.rotations[current.rot]
+        local c = COLORS[current.color]
+        for _, b in ipairs(shape) do
+            local ax, ay = current.x + b[1], current.y + b[2]
+            if ax >= 1 and ax <= COLS and ay >= 1 and ay <= ROWS then
+                local idx = ((ay - 1) * COLS + (ax - 1)) * 4 + 1
+                boardPixels[idx]     = floor(c[1] * 255)
+                boardPixels[idx + 1] = floor(c[2] * 255)
+                boardPixels[idx + 2] = floor(c[3] * 255)
+                boardPixels[idx + 3] = 255
+            end
+        end
+    end
+    if gl_update_texture_sub then
+        local newId = gl_update_texture_sub(boardTexID or 0, COLS, ROWS, boardPixels)
+        if newId and newId > 0 then boardTexID = newId end
+        if boardTexID and boardTexID > 0 and gl_bind_texture and gl_tex_parameteri then
+            gl_bind_texture(boardTexID, 0)
+            gl_tex_parameteri(0x0DE1, 0x2801, 0x2601)
+            gl_tex_parameteri(0x0DE1, 0x2800, 0x2601)
+            gl_tex_parameteri(0x0DE1, 0x2802, 0x812F)
+            gl_tex_parameteri(0x0DE1, 0x2803, 0x812F)
+        end
+    end
+end
+local function rect(x, y, w, h, r, g, b, a)
+    if not quad or not uiProgram then return end
+    useProgram(uiProgram)
+    gl_uniform_mat4(uiProgram, "uMVP", mat4_transform(ortho, x, y, 0, w, h, 1, 0, 0))
+    gl_uniform_4f(uiProgram, "uColor", r, g, b, a or 1)
+    gl_draw_mesh(quad, GL_TRIANGLES)
+end
+local function drawRealisticShadow(casterX, casterY, casterSize, casterCol, isGlass, heightAboveGround, intensity)
+    if not cfg.shadows or not quad or not shadowProgram then return end
+    useProgram(shadowProgram)
+    local bW = COLS * CELL
+    local lightX = boardX + bW + 250.0
+    local lightY = boardY - 180.0
+    gl_uniform_mat4(shadowProgram, "uMVP", ortho)
+    gl_uniform_2f(shadowProgram, "u_lightPos", lightX, lightY)
+    gl_uniform_2f(shadowProgram, "u_casterPos", casterX + casterSize * 0.5, casterY + casterSize * 0.5)
+    gl_uniform_3f(shadowProgram, "u_casterColor", casterCol[1], casterCol[2], casterCol[3])
+    gl_uniform_1i(shadowProgram, "u_isGlass", isGlass and 1 or 0)
+    gl_uniform_1f(shadowProgram, "u_casterHeight", heightAboveGround)
+    gl_uniform_1f(shadowProgram, "u_intensity", intensity)
+    gl_uniform_1f(shadowProgram, "u_time", get_time())
+    local reach = 30.0 + heightAboveGround * 45.0
+    local sx = casterX - reach
+    local sy = casterY - 2.0
+    local sw = casterSize + reach + 4.0
+    local sh = casterSize + reach + 4.0
+    gl_uniform_2f(shadowProgram, "u_quadSize", sw, sh)
+    gl_uniform_mat4(shadowProgram, "uMVP", mat4_transform(ortho, sx, sy, 0, sw, sh, 1, 0, 0))
+    gl_draw_mesh(quad, GL_TRIANGLES)
+end
+local function block(x, y, size, color, alpha, buried, tri, triType, neighbors)
+    if not quad or not blockProgram then return end
+    useProgram(blockProgram)
+    gl_uniform_mat4(blockProgram, "uMVP", mat4_transform(ortho, x, y, 0, size, size, 1, 0, 0))
+    gl_uniform_4f(blockProgram, "uColor", color[1], color[2], color[3], alpha or 1)
+    gl_uniform_4f(blockProgram, "uParams", get_time(), buried or 0, x, y)
+    gl_uniform_4f(blockProgram, "uOptions", cfg.style, tri and 1 or 0, triType or 0, size)
+    local n = neighbors or {0,0,0,0}
+    gl_uniform_4f(blockProgram, "uNeighbors", n[1], n[2], n[3], n[4])
+    local bW, bH = COLS * CELL, ROWS * CELL
+    gl_uniform_4f(blockProgram, "uBoardArea", boardX, boardY, bW, bH)
+    gl_uniform_4f(blockProgram, "uLightArea", boardX + bW + 250, boardY - 180, 0, 0)
+    if boardTexID and boardTexID > 0 and gl_bind_texture then
+        gl_bind_texture(boardTexID, 0)
+        gl_uniform_1i(blockProgram, "u_boardTex", 0)
+    end
+    gl_draw_mesh(quad, GL_TRIANGLES)
+end
+local function textAt(s, x, y, size, color)
+    local nx = x / screenW * 2 - 1
+    local ny = 1 - y / screenH * 2
+    gl_use_program(0)
+    activeProgram = nil
+    if cfg.textGlow then
+        gl_print(s, nx + 2 / screenW, ny - 2 / screenH, 0, size, "Segoe UI",
+                 color[1] * 0.40, color[2] * 0.40, color[3] * 0.40, 1)
+    end
+    gl_print(s, nx, ny, 0, size, "Segoe UI", color[1], color[2], color[3], 1)
+    activeProgram = nil
+end
+local function button(x, y, w, h, label, enabled)
+    local mx, my = get_canvas_mouse(CANVAS)
+    mx, my = mx or -10000, my or -10000
+    local hover = mx >= x and mx <= x + w and my >= y and my <= y + h
+    local br = hover and 0.55 or 0.24
+    local bg = enabled and 0.16 or 0.10
+    rect(x + 3, y + 4, w, h, 0, 0, 0, 0.45)
+    rect(x, y, w, h, br, br * 1.05, br * 1.25, 1)
+    rect(x + 2, y + 2, w - 4, h - 4, bg, enabled and 0.31 or 0.11, enabled and 0.20 or 0.17, 1)
+    textAt(label, x + 13, y + floor(h * 0.28), 13, hover and {1,1,1} or {0.82,0.85,0.90})
+end
+local function drawMenu()
+    local cx = floor(screenW / 2)
+    local cy = floor(screenH / 2)
+    textAt("TETRIS+", cx - 75, cy - 176, 32, {0.0, 0.95, 1.0})
+    button(cx - 110, cy - 75, 220, 45, "PLAY", false)
+    button(cx - 110, cy - 13, 220, 45, "STORE / MODS", false)
+    button(cx - 110, cy + 49, 220, 45, "BACK TO HOME", false)
+    textAt("Classic  /  Sandtrix  /  Tritris", cx - 95, cy + 135, 11, {0.55,0.60,0.72})
+end
+local function drawModeSelect()
+    local cx = floor(screenW / 2)
+    local cy = floor(screenH / 2)
+    textAt("SELECT MODE", cx - 85, cy - 155, 24, {0.30,0.80,0.95})
+    button(cx - 150, cy - 70, 300, 43, "CLASSIC", false)
+    button(cx - 150, cy - 12, 300, 43, "SANDTRIX", false)
+    button(cx - 150, cy + 46, 300, 43, "TRITRIS", false)
+    button(cx - 100, cy + 130, 200, 40, "BACK", false)
+end
+local STYLE_NAMES = {
+    "CLASSIC BEVEL",
+    "CYBER NEON",
+    "CRYSTAL GLASS (Volumetric Optical)",
+    "MOLTEN MAGMA",
+    "LIQUID GOLD",
+    "QUANTUM HOLO"
+}
+local function onOff(value) return value and "ON" or "OFF" end
+local function drawStore()
+    local cx = floor(screenW / 2)
+    local cy = floor(screenH / 2)
+    local bx, bw = cx - 205, 410
+    textAt("STORE / MODS", cx - 95, cy - 225, 24, {0.38,0.95,0.50})
+    textAt("COSMETICS", cx - 55, cy - 179, 14, {0.95,0.80,0.30})
+    button(bx, cy - 145, bw, 36, "THEME: " .. STYLE_NAMES[cfg.style + 1], true)
+    button(bx, cy - 101, bw, 36, "DROP SHADOWS: " .. onOff(cfg.shadows), cfg.shadows)
+    button(bx, cy - 57, bw, 36, "TEXT GLOW: " .. onOff(cfg.textGlow), cfg.textGlow)
+    button(bx, cy - 13, bw, 36, "MINESWEEPER NUMBERS: " .. onOff(cfg.minesweeper), cfg.minesweeper)
+    textAt("MECHANICS", cx - 55, cy + 47, 14, {0.95,0.80,0.30})
+    button(bx, cy + 76, bw, 36, "RANDOM FIGURES: " .. onOff(cfg.randomFigures), cfg.randomFigures)
+    button(cx - 100, cy + 149, 200, 40, "BACK", false)
+end
+local function drawGrid()
+    rect(boardX - 4, boardY - 4, COLS * CELL + 8, ROWS * CELL + 8, 0.16,0.16,0.23,1)
+    rect(boardX, boardY, COLS * CELL, ROWS * CELL, 0.025,0.025,0.042,1)
+    for y = 0, ROWS - 1 do
+        for x = 0, COLS - 1 do
+            rect(boardX + x * CELL + 1, boardY + y * CELL + 1, CELL - 2, CELL - 2, 0.055,0.055,0.080,0.45)
+        end
+    end
+end
+local function drawClassic()
+    if cfg.shadows then
+        for y = 1, ROWS do
+            for x = 1, COLS do
+                local val = board[y][x]
+                if val ~= 0 then
+                    local px = boardX + (x - 1) * CELL
+                    local py = boardY + (y - 1) * CELL
+                    drawRealisticShadow(px, py, CELL, COLORS[val], (cfg.style == 2), 0.0, 0.65)
+                end
+            end
+        end
+    end
+    for y = 1, ROWS do
+        for x = 1, COLS do
+            local value = board[y][x]
+            local px = boardX + (x - 1) * CELL
+            local py = boardY + (y - 1) * CELL
+            if value ~= 0 then
+                local buried = 0
+                for above = 1, y - 1 do
+                    if board[above][x] ~= 0 then buried = buried + 1 end
+                end
+                local neighbors = {
+                    x > 1 and board[y][x - 1] ~= 0 and 1 or 0,
+                    x < COLS and board[y][x + 1] ~= 0 and 1 or 0,
+                    y > 1 and board[y - 1][x] ~= 0 and 1 or 0,
+                    y < ROWS and board[y + 1][x] ~= 0 and 1 or 0
+                }
+                block(px, py, CELL, COLORS[value], 1, buried, false, 0, neighbors)
+            elseif cfg.minesweeper then
+                local adjacent = 0
+                for dy = -1, 1 do
+                    for dx = -1, 1 do
+                        local nx, ny = x + dx, y + dy
+                        if nx >= 1 and nx <= COLS and ny >= 1 and ny <= ROWS and board[ny][nx] ~= 0 then
+                            adjacent = adjacent + 1
+                        end
+                    end
+                end
+                if adjacent > 0 then
+                    textAt(tostring(adjacent), px + 9, py + 5, 14, NUMBER_COLORS[min(adjacent, 8)])
+                end
+            end
+        end
+    end
+end
+local function drawTritris()
+    if cfg.shadows then
+        for y = 1, ROWS do
+            for x = 1, COLS do
+                local cell = triBoard[y][x]
+                local col = 0
+                for t = 1, 4 do
+                    if cell[t] ~= 0 then col = cell[t]; break end
+                end
+                if col ~= 0 then
+                    local px = boardX + (x - 1) * CELL
+                    local py = boardY + (y - 1) * CELL
+                    drawRealisticShadow(px, py, CELL, COLORS[col], (cfg.style == 2), 0.0, 0.65)
+                end
+            end
+        end
+    end
+    for y = 1, ROWS do
+        for x = 1, COLS do
+            local cell = triBoard[y][x]
+            local buried = 0
+            for above = 1, y - 1 do
+                local a = triBoard[above][x]
+                if a[1] ~= 0 or a[2] ~= 0 or a[3] ~= 0 or a[4] ~= 0 then
+                    buried = buried + 1
+                end
+            end
+            for t = 1, 4 do
+                local value = cell[t]
+                if value ~= 0 then
+                    local px = boardX + (x - 1) * CELL
+                    local py = boardY + (y - 1) * CELL
+                    block(px, py, CELL, COLORS[value], 1, buried, true, t - 1)
+                end
+            end
+        end
+    end
+end
+local function drawSand()
+    local visualSize = 2 * (CELL / SCALE)
+    for y = 1, SROWS, 2 do
+        for x = 1, SCOLS, 2 do
+            local color = sand[sandIndex(x, y)]
+            if color == 0 then color = sand[sandIndex(x + 1, y)] end
+            if color == 0 then color = sand[sandIndex(x, y + 1)] end
+            if color == 0 then color = sand[sandIndex(x + 1, y + 1)] end
+            if color ~= 0 then
+                local px = boardX + (x - 1) * (CELL / SCALE)
+                local py = boardY + (y - 1) * (CELL / SCALE)
+                block(px, py, visualSize, COLORS[color], 1, 0, false, 0)
+            end
+        end
+    end
+end
+local function drawActivePiece()
+    if gameOver or not current then return end
+    local landingY = ghostY()
+    local shape = current.rotations[current.rot]
+    local color = COLORS[current.color]
+    if cfg.shadows then
+        local altitude = max(0, landingY - current.y)
+        for _, b in ipairs(shape) do
+            local ax, ay = current.x + b[1], current.y + b[2]
+            if ay >= 1 and ay <= ROWS and ax >= 1 and ax <= COLS then
+                local px = boardX + (ax - 1) * CELL
+                local py = boardY + (ay - 1) * CELL
+                drawRealisticShadow(px, py, CELL, color, (cfg.style == 2), altitude * 0.15, 0.85)
+            end
+        end
+    end
+    if landingY ~= current.y then
+        for _, b in ipairs(shape) do
+            local x, y = current.x + b[1], landingY + b[2]
+            if x >= 1 and x <= COLS and y >= 1 and y <= ROWS then
+                block(boardX + (x - 1) * CELL, boardY + (y - 1) * CELL, CELL, color, 0.24, 1, mode == 2, b[3])
+            end
+        end
+    end
+    for _, b in ipairs(shape) do
+        local x, y = current.x + b[1], current.y + b[2]
+        if x >= 1 and x <= COLS and y >= 1 and y <= ROWS then
+            local px = boardX + (x - 1) * CELL
+            local py = boardY + (y - 1) * CELL
+            block(px, py, CELL, color, 1, 0, mode == 2, b[3])
+        end
+    end
+end
+local function drawSidebar()
+    rect(sideX, boardY, 174, 130, 0.14,0.14,0.22,1)
+    rect(sideX + 2, boardY + 2, 170, 126, 0.035,0.035,0.06,1)
+    textAt("NEXT", sideX + 14, boardY + 12, 12, {0.75,0.80,0.90})
+    if nextPiece then
+        for _, b in ipairs(nextPiece.rotations[1]) do
+            block(sideX + 22 + b[1] * 23, boardY + 43 + b[2] * 23, 23, COLORS[nextPiece.color], 1, 0, mode == 2, b[3])
+        end
+    end
+    local sy = boardY + 145
+    rect(sideX, sy, 174, 310, 0.14,0.14,0.22,1)
+    rect(sideX + 2, sy + 2, 170, 306, 0.035,0.035,0.06,1)
+    textAt("SCORE", sideX + 14, sy + 14, 11, {0.58,0.60,0.70})
+    textAt(tostring(score), sideX + 14, sy + 36, 17, {0.40,0.92,0.52})
+    textAt("BEST", sideX + 14, sy + 75, 11, {0.58,0.60,0.70})
+    textAt(tostring(max(score, best[mode + 1])), sideX + 14, sy + 97, 17, {0.98,0.82,0.30})
+    textAt("LEVEL", sideX + 14, sy + 138, 11, {0.58,0.60,0.70})
+    textAt(tostring(level), sideX + 14, sy + 160, 17, {0.42,0.72,1.0})
+    textAt("LINES", sideX + 14, sy + 201, 11, {0.58,0.60,0.70})
+    textAt(tostring(lines), sideX + 14, sy + 223, 17, {0.90,0.48,0.90})
+    local modes = {"CLASSIC", "SANDTRIX", "TRITRIS"}
+    textAt(modes[mode + 1], sideX + 14, sy + 276, 11, {0.55,0.58,0.68})
+end
+local function drawGame()
+    local contentW = COLS * CELL + 26 + 174
+    boardX = max(15, floor((screenW - contentW) / 2))
+    boardY = max(12, floor((screenH - ROWS * CELL) / 2))
+    sideX = boardX + COLS * CELL + 26
+    syncBoardTextureToGPU()
+    drawGrid()
+    if mode == 0 then
+        drawClassic()
+    elseif mode == 1 then
+        drawSand()
+    else
+        drawTritris()
+    end
+    drawActivePiece()
+    drawSidebar()
+    if paused and not gameOver then
+        rect(boardX, boardY, COLS * CELL, ROWS * CELL, 0,0,0,0.76)
+        textAt("PAUSED", boardX + 90, boardY + 270, 22, {0.75,0.90,1.0})
+        textAt("PRESS P TO RESUME", boardX + 60, boardY + 314, 12, {0.78,0.80,0.90})
+    end
+    if gameOver then
+        rect(boardX, boardY, COLS * CELL, ROWS * CELL, 0,0,0,0.78)
+        rect(boardX + 15, boardY + 212, COLS * CELL - 30, 143, 0.11,0.06,0.08,0.98)
+        textAt("GAME OVER", boardX + 75, boardY + 235, 18, {1.0,0.28,0.22})
+        textAt("SCORE: " .. tostring(score), boardX + 85, boardY + 272, 13, {0.92,0.90,0.86})
+        textAt("R: RESTART  ESC: MENU", boardX + 55, boardY + 312, 11, {0.70,0.72,0.80})
+    end
+end
+local function render()
+    if not gl_available() then return end
+    screenW, screenH = BASE_W, BASE_H
+    if is_fullscreen() then
+        screenW, screenH = get_window_size()
+    end
+    if screenW < 1 then screenW = 1 end
+    if screenH < 1 then screenH = 1 end
+    if not gl_begin_render(CANVAS, screenW, screenH) then return end
+    if not quad then initGL() end
+    activeProgram = nil
+    gl_viewport(0, 0, screenW, screenH)
+    gl_clear(0.025,0.025,0.045,1)
+    gl_enable(GL_BLEND)
+    gl_blend_func(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+    gl_disable(GL_DEPTH_TEST)
+    ortho = mat4_ortho(0, screenW, screenH, 0, -1, 1)
+    if state == 0 then
+        drawMenu()
+    elseif state == 1 then
+        drawModeSelect()
+    elseif state == 2 then
+        drawGame()
+    else
+        drawStore()
+    end
+    gl_use_program(0)
+    activeProgram = nil
+    gl_end_render(CANVAS)
+    gl_refresh(CANVAS)
+end
+local function update()
+    local now = get_time()
+    local dt = now - lastTime
+    lastTime = now
+    dt = max(0, min(dt, 0.1))
+    if state == 2 and not gameOver and not paused then
+        if mode == 1 then
+            sandTimer = sandTimer + dt
+            local steps = 0
+            while sandTimer >= 0.020 and steps < 3 do
+                updateSandPhysics()
+                processSandMatch()
+                sandTimer = sandTimer - 0.020
+                steps = steps + 1
+            end
+        end
+        local interval = max(0.080, 0.500 - (level - 1) * 0.020)
+        if key_down(VK_DOWN) or key_down(0x53) then
+            interval = 0.045
+        end
+        dropTimer = dropTimer + dt
+        if dropTimer >= interval then
+            dropTimer = 0
+            if checkCollision(current, current.rot, current.x, current.y + 1) then
+                lockPiece()
+            else
+                current.y = current.y + 1
+                if key_down(VK_DOWN) or key_down(0x53) then
+                    score = score + 1
+                end
+            end
+        end
+    end
+    render()
+end
+local function inside(x, y, bx, by, bw, bh)
+    return x >= bx and x <= bx + bw and y >= by and y <= by + bh
+end
+on_canvas_click(CANVAS, function(x, y, btn)
+    if btn ~= 1 then return end
+    local cx = floor(screenW / 2)
+    local cy = floor(screenH / 2)
+    if state == 0 then
+        if inside(x,y,cx - 110,cy - 75,220,45) then
+            state = 1
+        elseif inside(x,y,cx - 110,cy - 13,220,45) then
+            state = 3
+        elseif inside(x,y,cx - 110,cy + 49,220,45) then
+            navigate("about:home")
+        end
+    elseif state == 1 then
+        if inside(x,y,cx - 150,cy - 70,300,43) then
+            mode = 0
+            restartGame()
+            state = 2
+        elseif inside(x,y,cx - 150,cy - 12,300,43) then
+            mode = 1
+            restartGame()
+            state = 2
+        elseif inside(x,y,cx - 150,cy + 46,300,43) then
+            mode = 2
+            restartGame()
+            state = 2
+        elseif inside(x,y,cx - 100,cy + 130,200,40) then
+            state = 0
+        end
+    elseif state == 3 then
+        if inside(x,y,cx - 205,cy - 145,410,36) then
+            cfg.style = (cfg.style + 1) % 6
+        elseif inside(x,y,cx - 205,cy - 101,410,36) then
+            cfg.shadows = not cfg.shadows
+        elseif inside(x,y,cx - 205,cy - 57,410,36) then
+            cfg.textGlow = not cfg.textGlow
+        elseif inside(x,y,cx - 205,cy - 13,410,36) then
+            cfg.minesweeper = not cfg.minesweeper
+        elseif inside(x,y,cx - 205,cy + 76,410,36) then
+            cfg.randomFigures = not cfg.randomFigures
+        elseif inside(x,y,cx - 100,cy + 149,200,40) then
+            state = 0
+        end
+    end
+end)
+on_key_down(function(vk)
+    if vk == VK_F11 then
+        fullscreen_canvas(CANVAS, not is_fullscreen())
+        return
+    end
+    if state ~= 2 then
+        if vk == VK_ESCAPE and state ~= 0 then state = 0 end
+        return
+    end
+    if vk == VK_ESCAPE then
+        if score > best[mode + 1] then best[mode + 1] = score end
+        state = 0
+        paused = true
+        return
+    end
+    if vk == 0x52 and gameOver then
+        restartGame()
+        return
+    end
+    if (vk == 0x50 or vk == VK_P) and not gameOver then
+        paused = not paused
+        return
+    end
+    if gameOver or paused then return end
+    if vk == VK_LEFT or vk == 0x41 then
+        if not checkCollision(current, current.rot, current.x - 1, current.y) then
+            current.x = current.x - 1
+        end
+    elseif vk == VK_RIGHT or vk == 0x44 then
+        if not checkCollision(current, current.rot, current.x + 1, current.y) then
+            current.x = current.x + 1
+        end
+    elseif vk == VK_UP or vk == 0x57 then
+        rotatePiece()
+    elseif vk == VK_SPACE then
+        hardDrop()
+    elseif vk == 0x52 then
+        restartGame()
+    end
+end)
+set_timer(16, update)
+}
