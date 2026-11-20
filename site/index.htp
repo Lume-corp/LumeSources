@@ -26,6 +26,14 @@
             @br {size:25;}
             @button {content:"Play ULTRAKILL"; width:180; height:40; background:"#dc2626"; color:"#ffffff"; border-radius:6; size:16; url:"ultrakill.htp";}
         }
+        @column {background:"#18181b"; padding:25; border-radius:10; width:300;
+            @text {content:"TETRIS+"; size:28; color:"#10b981"; bold:"true";}
+            @divider {color:"#27272a"; thickness:1; margin:15;}
+            @text {content:"Classic falling blocks game with shaders."; size:15; color:"#a1a1aa";}
+            @text {content:""; size:15;}
+            @br {size:25;}
+            @button {content:"Play TETRIS+"; width:170; height:40; background:"#059669"; color:"#ffffff"; border-radius:6; size:16; url:"tetris+.htp";}
+        }
     }
     @br {size:50;}
     @button {content:"Back to Home"; width:150; height:35; background:"#27272a"; color:"#fafafa"; border-radius:6; url:"about:home"; size:14;}
